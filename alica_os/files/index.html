@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>XPWeb OS</title>
+<style>
+  :root {
+    --bg-desktop: linear-gradient(180deg, #3a6ea5 0%, #24557f 100%);
+    --bg-window: #ece9d8;
+    --bg-content: #ffffff;
+    --text-main: #000000;
+    --win-border: #0831d9;
+    --win-titlebar: linear-gradient(180deg, #0a57d6, #0831d9);
+    --win-titletext: #ffffff;
+    --taskbar-bg: linear-gradient(180deg, #3f8cf3, #1e5fbf);
+    --start-btn-bg: linear-gradient(180deg, #58a83c, #2c6a1d);
+    --file-item-hover: #e0ecff;
+    --font-size: 14px;
+  }
+  [data-theme="dark"] {
+    --bg-desktop: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%);
+    --bg-window: #2d2d2d;
+    --bg-content: #1e1e1e;
+    --text-main: #e0e0e0;
+    --win-border: #444444;
+    --win-titlebar: linear-gradient(180deg, #333333, #222222);
+    --win-titletext: #e0e0e0;
+    --taskbar-bg: linear-gradient(180deg, #2d2d2d, #1a1a1a);
+    --start-btn-bg: linear-gradient(180deg, #3a7a3a, #1d4a1d);
+    --file-item-hover: #333333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: Tahoma, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg-desktop); color: var(--text-main); font-size: var(--font-size); }
+  
+  #setupScreen, #loginScreen { position: fixed; inset: 0; background: #1a1a1a; z-index: 999999; display: flex; align-items: center; justify-content: center; color: #fff; flex-direction: column; }
+  #setupScreen.hidden, #loginScreen.hidden { display: none; }
+  .setup-box { background: #2d2d2d; border: 1px solid #444; padding: 30px; border-radius: 8px; width: 100%; max-width: 400px; text-align: center; }
+  .setup-box h2 { margin-bottom: 20px; font-weight: normal; }
+  .setup-box input, .setup-box select { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #555; background: #1a1a1a; color: #fff; border-radius: 4px; outline: none; }
+  .setup-box button { width: 100%; padding: 12px; background: #0a57d6; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+  .avatar-preview { font-size: 60px; margin-bottom: 20px; }
+
+  #desktop { position: fixed; inset: 0; background: var(--bg-desktop); overflow: hidden; }
+  
+  .desktop-icon { position: absolute; width: 85px; text-align: center; color: #fff; text-shadow: 1px 1px 2px #000; padding: 8px 4px; border-radius: 4px; cursor: pointer; font-size: 12px; word-wrap: break-word; line-height: 1.2; z-index: 10; }
+  .desktop-icon.selected { background: rgba(49, 106, 197, 0.7); outline: 1px dotted #fff; }
+  .desktop-icon .glyph { font-size: 38px; display: block; margin-bottom: 4px; }
+
+  #selection-box { position: absolute; border: 1px solid #fff; background: rgba(49, 106, 197, 0.3); z-index: 20; display: none; }
+
+  .win { position: absolute; min-width: 260px; min-height: 200px; background: var(--bg-window); border: 1px solid var(--win-border); border-radius: 6px 6px 0 0; box-shadow: 3px 3px 12px rgba(0,0,0,.45); display: flex; flex-direction: column; overflow: hidden; }
+  .win .titlebar { background: var(--win-titlebar); color: var(--win-titletext); padding: 6px 8px; font-size: 13px; font-weight: bold; display: flex; align-items: center; cursor: move; gap: 6px; min-height: 32px; }
+  .win .titlebar .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .win .btn { width: 26px; height: 24px; border: 1px solid #fff; border-radius: 3px; background: rgba(255,255,255,0.2); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .win .btn.close { background: #d44; }
+  .win .content { flex: 1; overflow: auto; background: var(--bg-content); padding: 10px; font-size: var(--font-size); position: relative; }
+  .win.minimized { display: none; }
+  .win.maximized { left: 0 !important; top: 0 !important; width: 100% !important; height: calc(100% - 48px) !important; border-radius: 0; }
+  
+  #taskbar { position: fixed; left: 0; right: 0; bottom: 0; height: 48px; background: var(--taskbar-bg); display: flex; align-items: center; gap: 6px; padding: 0 8px; z-index: 100000; }
+  #startBtn { background: var(--start-btn-bg); color: #fff; font-weight: bold; font-style: italic; border: 1px solid #1c4b12; border-radius: 4px; padding: 0 16px; height: 36px; font-size: 15px; cursor: pointer; }
+  #taskItems { display: flex; gap: 4px; flex: 1; overflow: hidden; }
+  .taskItem { background: #2a6bd8; color: #fff; border: 1px solid #1443a0; padding: 6px 10px; border-radius: 3px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; cursor: pointer; }
+  .taskItem.active { background: #1443a0; }
+  #tray { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 16px; cursor: pointer; }
+  
+  #startMenu { position: fixed; bottom: 48px; left: 0; width: 280px; height: 420px; background: var(--bg-window); border: 1px solid var(--win-border); display: none; flex-direction: column; z-index: 99999; }
+  #startMenu.open { display: flex; }
+  #startHeader { background: var(--win-titlebar); color: var(--win-titletext); padding: 12px; display: flex; gap: 10px; align-items: center; }
+  #startBody { flex: 1; overflow: auto; padding: 6px; color: var(--text-main); }
+  .startItem { display: flex; align-items: center; gap: 10px; padding: 10px; font-size: 14px; cursor: pointer; border-radius: 3px; }
+  .startItem:active, .startItem:hover { background: #316ac5; color: #fff; }
+  .startItem .g { font-size: 22px; }
+  #startFooter { padding: 8px; background: var(--win-titlebar); display: flex; justify-content: flex-end; gap: 8px; }
+  #startFooter button { padding: 6px 12px; font-size: 13px; border-radius: 3px; cursor: pointer; }
+
+  .fileGrid { display: grid; grid-template-columns: repeat(auto-fill, 75px); gap: 8px; position: relative; min-height: 100px; }
+  .fileItem { text-align: center; padding: 6px 2px; border-radius: 3px; font-size: 12px; cursor: pointer; word-wrap: break-word; line-height: 1.2; }
+  .fileItem:hover { background: var(--file-item-hover); }
+  .fileItem.selected { background: #316ac5; color: #fff; }
+  .fileItem .g { font-size: 34px; display: block; margin-bottom: 4px; }
+  .pathBar { background: #f5f5f5; padding: 4px 8px; border: 1px solid #ccc; margin-bottom: 10px; font-size: 12px; border-radius: 3px; display: flex; align-items: center; justify-content: space-between; }
+  .pathBar button { padding: 4px 8px; cursor: pointer; font-size: 11px; }
+
+  .ctxMenu { position: fixed; background: var(--bg-content); border: 1px solid #999; box-shadow: 2px 2px 10px rgba(0,0,0,.5); min-width: 170px; z-index: 200000; font-size: 14px; border-radius: 2px; padding: 4px 0; color: var(--text-main); }
+  .ctxMenu .item { padding: 10px 16px; display: flex; gap: 10px; cursor: pointer; }
+  .ctxMenu .item:hover, .ctxMenu .item:active { background: #316ac5; color: #fff; }
+  .ctxMenu .item.disabled { opacity: 0.5; pointer-events: none; }
+  .ctxMenu .sep { height: 1px; background: #ddd; margin: 4px 0; }
+
+  textarea.note { width: 100%; height: calc(100% - 50px); border: 1px solid #ccc; padding: 10px; font-size: 14px; outline: none; background: var(--bg-content); color: var(--text-main); }
+  .browser-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+  .browser-bar input { flex: 1; padding: 8px; border: 1px solid #888; font-size: 14px; }
+  .browser-bar button { padding: 8px 12px; font-size: 14px; cursor: pointer; }
+
+  .settings-layout { display: flex; height: 100%; gap: 10px; }
+  .settings-sidebar { width: 150px; border-right: 1px solid #ccc; overflow-y: auto; }
+  .settings-sidebar .item { padding: 8px; cursor: pointer; border-radius: 4px; font-size: 13px; }
+  .settings-sidebar .item:hover { background: var(--file-item-hover); }
+  .settings-sidebar .item.active { background: #316ac5; color: #fff; }
+  .settings-main { flex: 1; overflow-y: auto; padding-left: 10px; }
+  .settings-main h3 { margin-bottom: 12px; font-size: 16px; }
+  .settings-row { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #ddd; }
+  .settings-row label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 13px; }
+  .settings-row select, .settings-row input[type="range"], .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 6px; border: 1px solid #888; border-radius: 3px; background: var(--bg-content); color: var(--text-main); }
+
+  .console { background: #000; color: #0f0; font-family: monospace; padding: 10px; height: 100%; overflow-y: auto; font-size: 13px; }
+  .console .line { margin-bottom: 2px; word-wrap: break-word; }
+  .console input { background: transparent; border: none; outline: none; color: #0f0; font-family: monospace; font-size: 13px; width: 80%; }
+</style>
+</head>
+<body>
+
+<div id="setupScreen" class="hidden">
+  <div class="setup-box">
+    <h2>Установка XPWeb OS</h2>
+    <div class="avatar-preview" id="avatarPreview">👤</div>
+    <input type="text" id="setupName" placeholder="Имя">
+    <input type="text" id="setupLogin" placeholder="Логин">
+    <input type="password" id="setupPass" placeholder="Пароль">
+    <select id="setupAvatar">
+      <option value="👤">👤</option><option value="👨‍💻">👨‍💻</option>
+      <option value="🐱">🐱</option><option value="🤖">🤖</option>
+    </select>
+    <button id="installBtn">Установить</button>
+  </div>
+</div>
+
+<div id="loginScreen" class="hidden">
+  <div class="setup-box">
+    <div class="avatar-preview" id="loginAvatar">👤</div>
+    <h2 id="loginName">Пользователь</h2>
+    <input type="text" id="loginInput" placeholder="Логин">
+    <input type="password" id="loginPass" placeholder="Пароль">
+    <button id="loginBtn">Войти</button>
+  </div>
+</div>
+
+<div id="desktop">
+  <div id="selection-box"></div>
+</div>
+
+<div id="taskbar">
+  <button id="startBtn">⊞ Пуск</button>
+  <div id="taskItems"></div>
+  <div id="tray">
+    <span id="trayLang">RU</span>
+    <span id="trayVolume">🔊</span>
+    <span id="trayWifi">📶</span>
+    <span id="trayTheme">☀️</span>
+  </div>
+</div>
+
+<div id="startMenu">
+  <div id="startHeader">
+    <span id="startAvatar" style="font-size:28px;">👤</span>
+    <div>
+      <span id="startUserName" style="font-weight:bold;">Пользователь</span><br>
+      <small>XPWeb OS</small>
+    </div>
+  </div>
+  <div id="startBody"></div>
+  <div id="startFooter">
+    <button id="btnShutdown">⏻ Выключить</button>
+  </div>
+</div>
+
+<script>
+var USER_KEY = 'xpweb_user_v10';
+var userAccount = null;
+
+var config = {
+  theme: 'light', lang: 'ru', vol: 80, bright: 100, wifi: true,
+  userName: 'Пользователь', userAvatar: '👤',
+  updateAuto: true, firewall: true, batterySaver: false
+};
+
+var FS = {};
+var ICONS_POS = {};
+var clipboard = null;
+var winZ = 100, winIdSeq = 1;
+var openWindows = {};
+var selectedIcons = [];
+
+// Системные приложения (ярлыки, не файлы)
+var SYSTEM_ICONS = [
+  { id: 'sys:docs', label: 'Мои документы', glyph: '📁', app: 'explorer', path: 'C:/Documents' },
+  { id: 'sys:browser', label: 'Браузер', glyph: '🌐', app: 'browser' },
+  { id: 'sys:notepad', label: 'Блокнот', glyph: '📝', app: 'notepad' },
+  { id: 'sys:console', label: 'Консоль', glyph: '💻', app: 'console' },
+  { id: 'sys:settings', label: 'Настройки', glyph: '⚙️', app: 'settings' }
+];
+
+function resetFS() {
+  FS = {
+    'C:/': { type: 'dir', children: ['Desktop', 'Documents', 'internet'] },
+    'C:/Desktop': { type: 'dir', children: [] },
+    'C:/Documents': { type: 'dir', children: ['readme.txt'] },
+    'C:/internet': { type: 'dir', children: ['xp-home.html'] },
+    'C:/Documents/readme.txt': { type: 'file', content: 'Добро пожаловать в XPWeb OS!' },
+    'C:/internet/xp-home.html': { type: 'file', content: '<html><body style="font-family:sans-serif;padding:20px;"><h1>🌐 Локальный сайт</h1><p>Интернет внутри ОС!</p></body></html>' }
+  };
+  ICONS_POS = {
+    'sys:docs':    { x: 10, y: 10 },
+    'sys:browser': { x: 10, y: 105 },
+    'sys:notepad': { x: 10, y: 200 },
+    'sys:settings':{ x: 10, y: 295 },
+    'sys:console': { x: 10, y: 390 }
+  };
+}
+resetFS();
+
+function checkAuth() {
+  var saved = localStorage.getItem(USER_KEY);
+  if (saved) {
+    userAccount = JSON.parse(saved);
+    document.getElementById('setupScreen').classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginAvatar').textContent = userAccount.avatar;
+    document.getElementById('loginName').textContent = userAccount.name;
+    config.userName = userAccount.name;
+    config.userAvatar = userAccount.avatar;
+  } else {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('setupScreen').classList.remove('hidden');
+  }
+}
+
+document.getElementById('setupAvatar').onchange = function(e) { document.getElementById('avatarPreview').textContent = e.target.value; };
+
+document.getElementById('installBtn').onclick = function() {
+  var name = document.getElementById('setupName').value.trim();
+  var login = document.getElementById('setupLogin').value.trim();
+  var pass = document.getElementById('setupPass').value;
+  var avatar = document.getElementById('setupAvatar').value;
+  if (!name || !login || !pass) { alert('Заполните все поля!'); return; }
+  var acc = { name: name, login: login, pass: pass, avatar: avatar };
+  localStorage.setItem(USER_KEY, JSON.stringify(acc));
+  userAccount = acc;
+  config.userName = name;
+  config.userAvatar = avatar;
+  document.getElementById('setupScreen').classList.add('hidden');
+  bootOS();
+};
+
+document.getElementById('loginBtn').onclick = function() {
+  var login = document.getElementById('loginInput').value.trim();
+  var pass = document.getElementById('loginPass').value;
+  if (login === userAccount.login && pass === userAccount.pass) {
+    document.getElementById('loginScreen').classList.add('hidden');
+    bootOS();
+  } else { alert('Неверный логин или пароль!'); }
+};
+
+function bootOS() {
+  document.querySelectorAll('.win').forEach(function(w) { w.remove(); });
+  openWindows = {};
+  applyConfig();
+  renderDesktop();
+}
+
+function applyConfig() {
+  document.documentElement.setAttribute('data-theme', config.theme);
+  document.getElementById('desktop').style.filter = 'brightness(' + config.bright + '%)';
+  document.getElementById('trayLang').textContent = config.lang.toUpperCase();
+  document.getElementById('trayVolume').textContent = config.vol === 0 ? '🔇' : '🔊';
+  document.getElementById('trayWifi').textContent = config.wifi ? '📶' : '📵';
+  document.getElementById('trayTheme').textContent = config.theme === 'dark' ? '🌙' : '☀️';
+  document.getElementById('startUserName').textContent = config.userName;
+  document.getElementById('startAvatar').textContent = config.userAvatar;
+  renderDesktop();
+  if (document.getElementById('startMenu').classList.contains('open')) buildStartMenu();
+}
+
+function getParentPath(p) {
+  var idx = p.lastIndexOf('/');
+  if (idx <= 2) return 'C:/';
+  return p.substring(0, idx);
+}
+
+function getBaseName(p) {
+  return p.substring(p.lastIndexOf('/') + 1);
+}
+
+// ================= ФАЙЛОВАЯ СИСТЕМА =================
+function deleteNode(path) {
+  if (path === 'C:/' || path === 'C:/Desktop' || path === 'C:/Documents' || path === 'C:/internet') {
+    alert('Нельзя удалить системную папку!'); return false;
+  }
+  if (!FS[path]) return false;
+  
+  var parent = getParentPath(path);
+  var name = getBaseName(path);
+  
+  if (FS[path].type === 'dir' && FS[path].children) {
+    FS[path].children.slice().forEach(function(c) { deleteNode(path + '/' + c); });
+  }
+  
+  if (FS[parent] && FS[parent].children) {
+    FS[parent].children = FS[parent].children.filter(function(c) { return c !== name; });
+  }
+  delete FS[path];
+  return true;
+}
+
+function copyNode(src, dst) {
+  if (!FS[src]) return;
+  if (FS[src].type === 'dir') {
+    FS[dst] = { type: 'dir', children: [] };
+    (FS[src].children || []).forEach(function(c) {
+      FS[dst].children.push(c);
+      copyNode(src + '/' + c, dst + '/' + c);
+    });
+  } else {
+    FS[dst] = { type: 'file', content: FS[src].content };
+  }
+}
+
+function uniquePath(dir, name) {
+  var p = (dir === 'C:/' ? 'C:/' : dir + '/') + name;
+  if (!FS[p]) return { path: p, name: name };
+  var ext = name.lastIndexOf('.');
+  var base = ext > 0 ? name.substring(0, ext) : name;
+  var suffix = ext > 0 ? name.substring(ext) : '';
+  var i = 1;
+  while (FS[p]) {
+    name = base + ' (' + i + ')' + suffix;
+    p = (dir === 'C:/' ? 'C:/' : dir + '/') + name;
+    i++;
+  }
+  return { path: p, name: name };
+}
+
+function pasteNode(targetDir) {
+  if (!clipboard) return;
+  if (!FS[targetDir] || FS[targetDir].type !== 'dir') return;
+  if (!FS[targetDir].children) FS[targetDir].children = [];
+  if (!FS[clipboard.path]) { clipboard = null; return; }
+  
+  var name = getBaseName(clipboard.path);
+  var u = uniquePath(targetDir, name);
+  copyNode(clipboard.path, u.path);
+  FS[targetDir].children.push(u.name);
+  
+  if (clipboard.type === 'cut') { deleteNode(clipboard.path); clipboard = null; }
+}
+
+function createFolder(dir, name) {
+  if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return null; }
+  if (!FS[dir].children) FS[dir].children = [];
+  name = (name || '').trim();
+  if (!name) return null;
+  var u = uniquePath(dir, name);
+  FS[u.path] = { type: 'dir', children: [] };
+  FS[dir].children.push(u.name);
+  return u.path;
+}
+
+function createFile(dir, name) {
+  if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return null; }
+  if (!FS[dir].children) FS[dir].children = [];
+  name = (name || '').trim();
+  if (!name) return null;
+  var u = uniquePath(dir, name);
+  FS[u.path] = { type: 'file', content: '' };
+  FS[dir].children.push(u.name);
+  return u.path;
+}
+
+// ================= ИМПОРТ С WINDOWS (файлы И папки) =================
+// dir — виртуальная папка назначения
+function importFromHost(dir, allowDirs) {
+  if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return; }
+  
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  if (allowDirs) {
+    // webkitdirectory позволяет выбрать ПАПКУ целиком (рекурсивно)
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+  }
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  
+  input.onchange = function() {
+    var files = Array.from(input.files || []);
+    if (!files.length) { document.body.removeChild(input); return; }
+    
+    var pending = files.length;
+    files.forEach(function(f) {
+      // f.webkitRelativePath = "Folder/sub/file.txt" для папок; "" для одиночных файлов
+      var rel = f.webkitRelativePath || f.name;
+      var parts = rel.split('/').filter(Boolean);
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var content = ev.target.result;
+        // Создаём вложенные папки по пути
+        var cur = dir;
+        for (var i = 0; i < parts.length - 1; i++) {
+          var sub = parts[i];
+          var sp = (cur === 'C:/' ? 'C:/' : cur + '/') + sub;
+          if (!FS[sp]) {
+            if (!FS[cur].children) FS[cur].children = [];
+            FS[sp] = { type: 'dir', children: [] };
+            FS[cur].children.push(sub);
+          }
+          if (FS[sp].type !== 'dir') break;
+          cur = sp;
+        }
+        if (cur === dir && parts.length > 1) { /* вложенность не построилась — кладём в корень */ }
+        var fname = parts[parts.length - 1];
+        var u = uniquePath(cur, fname);
+        FS[u.path] = { type: 'file', content: content };
+        if (!FS[cur].children) FS[cur].children = [];
+        FS[cur].children.push(u.name);
+        
+        pending--;
+        if (pending === 0) {
+          document.body.removeChild(input);
+          document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+        }
+      };
+      reader.onerror = function() {
+        pending--;
+        if (pending === 0) document.body.removeChild(input);
+      };
+      reader.readAsText(f);
+    });
+  };
+  
+  input.click();
+}
+
+// ================= ОКНА =================
+function createWindow(opts) {
+  var id = 'win' + (winIdSeq++);
+  var el = document.createElement('div');
+  el.className = 'win';
+  el.id = id;
+  el.style.width = (opts.width || 320) + 'px';
+  el.style.height = (opts.height || 380) + 'px';
+  el.style.left = (40 + (winIdSeq % 5) * 20) + 'px';
+  el.style.top = (40 + (winIdSeq % 5) * 20) + 'px';
+  el.style.zIndex = ++winZ;
+  
+  el.innerHTML = '<div class="titlebar">' +
+      '<span>' + (opts.glyph || '📄') + '</span>' +
+      '<span class="title">' + (opts.title || 'Окно') + '</span>' +
+      '<button class="btn min">_</button>' +
+      '<button class="btn max">□</button>' +
+      '<button class="btn close">✕</button>' +
+    '</div>' +
+    '<div class="content"></div>';
+  document.body.appendChild(el);
+  
+  var content = el.querySelector('.content');
+  if (opts.contentHTML) content.innerHTML = opts.contentHTML;
+
+  var winObj = { id: id, el: el, title: opts.title, glyph: opts.glyph, minimized: false };
+  openWindows[id] = winObj;
+
+  el.querySelector('.close').onclick = function() { el.remove(); delete openWindows[id]; renderTaskbar(); };
+  el.querySelector('.min').onclick = function() { winObj.minimized = true; el.style.display = 'none'; renderTaskbar(); };
+  el.querySelector('.max').onclick = function() { el.classList.toggle('maximized'); focusWindow(id); };
+  
+  var tb = el.querySelector('.titlebar');
+  var dragging = false, dx = 0, dy = 0;
+  tb.onmousedown = tb.ontouchstart = function(e) {
+    if (e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    var pt = e.touches ? e.touches[0] : e;
+    dx = pt.clientX - el.offsetLeft;
+    dy = pt.clientY - el.offsetTop;
+    focusWindow(id);
+  };
+  window.onmousemove = window.ontouchmove = function(e) {
+    if (!dragging) return;
+    var pt = e.touches ? e.touches[0] : e;
+    el.style.left = Math.max(0, pt.clientX - dx) + 'px';
+    el.style.top = Math.max(0, pt.clientY - dy) + 'px';
+    if (e.touches) e.preventDefault();
+  };
+  window.onmouseup = window.ontouchend = function() { dragging = false; };
+
+  el.addEventListener('mousedown', function() { focusWindow(id); });
+  el.addEventListener('touchstart', function() { focusWindow(id); }, {passive: true});
+
+  focusWindow(id);
+  if (opts.onMount) opts.onMount(content, el);
+}
+
+function focusWindow(id) {
+  var w = openWindows[id];
+  if (!w) return;
+  w.el.style.zIndex = ++winZ;
+  if (w.minimized) { w.minimized = false; w.el.style.display = 'flex'; }
+  renderTaskbar();
+}
+
+function renderTaskbar() {
+  var box = document.getElementById('taskItems');
+  box.innerHTML = '';
+  for (var id in openWindows) {
+    var w = openWindows[id];
+    var item = document.createElement('div');
+    item.className = 'taskItem' + (!w.minimized ? ' active' : '');
+    item.textContent = w.glyph + ' ' + w.title;
+    item.onclick = (function(wid, win) {
+      return function() {
+        if (win.minimized) focusWindow(wid);
+        else { win.minimized = true; win.el.style.display = 'none'; renderTaskbar(); }
+      };
+    })(id, w);
+    box.appendChild(item);
+  }
+}
+
+// ================= КОНТЕКСТНОЕ МЕНЮ =================
+function showCtxMenu(x, y, items) {
+  var old = document.querySelector('.ctxMenu');
+  if (old) old.remove();
+
+  var menu = document.createElement('div');
+  menu.className = 'ctxMenu';
+  menu.innerHTML = items.map(function(it, i) {
+    if (it === '-') return '<div class="sep"></div>';
+    return '<div class="item ' + (it.disabled ? 'disabled' : '') + '" data-i="' + i + '"><span>' + (it.icon || '') + '</span>' + it.label + '</div>';
+  }).join('');
+  document.body.appendChild(menu);
+  
+  var w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = Math.min(x, window.innerWidth - w - 10) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - h - 10) + 'px';
+
+  menu.querySelectorAll('.item').forEach(function(el) {
+    el.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+    el.addEventListener('touchstart', function(e) { e.stopPropagation(); }, {passive: true});
+    el.onclick = function(e) { 
+      e.stopPropagation(); 
+      menu.remove(); 
+      items[+el.dataset.i].action(); 
+    };
+  });
+  
+  function outsideClose(e) {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('mousedown', outsideClose);
+      document.removeEventListener('touchstart', outsideClose);
+    }
+  }
+  setTimeout(function() {
+    document.addEventListener('mousedown', outsideClose);
+    document.addEventListener('touchstart', outsideClose, {passive: true});
+  }, 100);
+}
+
+// ================= РАБОЧИЙ СТОЛ =================
+// Рабочий стол = системные ярлыки + содержимое C:/Desktop
+function renderDesktop() {
+  var desk = document.getElementById('desktop');
+  document.querySelectorAll('.desktop-icon').forEach(function(e) { e.remove(); });
+  
+  var items = [];
+  // 1) Системные ярлыки
+  SYSTEM_ICONS.forEach(function(ic) { items.push({ kind: 'sys', ic: ic }); });
+  // 2) Реальное содержимое C:/Desktop
+  var desktopDir = FS['C:/Desktop'];
+  if (desktopDir && desktopDir.children) {
+    desktopDir.children.forEach(function(name) {
+      var p = 'C:/Desktop/' + name;
+      if (!FS[p]) return;
+      items.push({ kind: 'fs', path: p, name: name, type: FS[p].type });
+    });
+  }
+
+  items.forEach(function(it) {
+    var id, label, glyph, app, path;
+    if (it.kind === 'sys') {
+      id = it.ic.id; label = it.ic.label; glyph = it.ic.glyph; app = it.ic.app; path = it.ic.path;
+    } else {
+      id = 'fs:' + it.path;
+      label = it.name;
+      glyph = it.type === 'dir' ? '📁' : (it.name.indexOf('.html') > -1 ? '🌐' : '📄');
+      app = it.type === 'dir' ? 'explorer' : (it.name.indexOf('.html') > -1 ? 'browser' : 'notepad');
+      path = it.path;
+    }
+
+    var pos = ICONS_POS[id] || { x: 10, y: 10 };
+    var el = document.createElement('div');
+    el.className = 'desktop-icon';
+    el.dataset.id = id;
+    el.style.left = pos.x + 'px';
+    el.style.top = pos.y + 'px';
+    el.innerHTML = '<span class="glyph">' + glyph + '</span>' + label;
+    
+    el.onclick = function(e) {
+      e.stopPropagation();
+      if (!e.ctrlKey) {
+        document.querySelectorAll('.desktop-icon').forEach(function(i) { i.classList.remove('selected'); });
+        selectedIcons = [];
+      }
+      el.classList.add('selected');
+      selectedIcons.push(el);
+    };
+    el.ondblclick = function() {
+      if (it.kind === 'sys') launchApp(app, path);
+      else if (it.type === 'dir') openExplorer(path);
+      else if (it.name.indexOf('.html') > -1) openBrowser('xp://' + it.name.replace('.html',''));
+      else openNotepad(path);
+    };
+
+    el.oncontextmenu = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var menuItems = [];
+      if (it.kind === 'sys') {
+        menuItems.push({ icon: '📂', label: 'Открыть', action: function() { launchApp(app, path); } });
+      } else {
+        menuItems.push({ icon: '📂', label: 'Открыть', action: function() {
+          if (it.type === 'dir') openExplorer(path);
+          else if (it.name.indexOf('.html') > -1) openBrowser('xp://' + it.name.replace('.html',''));
+          else openNotepad(path);
+        }});
+        menuItems.push('-');
+        menuItems.push({ icon: '📋', label: 'Копировать', action: function() { clipboard = { path: path, type: 'copy' }; } });
+        menuItems.push({ icon: '✂️', label: 'Вырезать', action: function() { clipboard = { path: path, type: 'cut' }; } });
+        menuItems.push({ icon: '🗑️', label: 'Удалить', action: function() {
+          if (confirm('Удалить ' + label + '?')) { deleteNode(path); renderDesktop(); }
+        }});
+      }
+      showCtxMenu(e.clientX, e.clientY, menuItems);
+    };
+
+    // Перетаскивание
+    var isDragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
+    el.onmousedown = el.ontouchstart = function(e) {
+      isDragging = false;
+      var pt = e.touches ? e.touches[0] : e;
+      startX = pt.clientX; startY = pt.clientY;
+      origX = parseInt(el.style.left); origY = parseInt(el.style.top);
+      
+      function move(ev) {
+        var p = ev.touches ? ev.touches[0] : ev;
+        if (Math.abs(p.clientX - startX) > 5 || Math.abs(p.clientY - startY) > 5) {
+          isDragging = true;
+          el.style.left = (origX + p.clientX - startX) + 'px';
+          el.style.top = (origY + p.clientY - startY) + 'px';
+        }
+      }
+      function up(ev) {
+        if (isDragging) {
+          ICONS_POS[id] = { x: parseInt(el.style.left), y: parseInt(el.style.top) };
+        }
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        document.removeEventListener('touchmove', move);
+        document.removeEventListener('touchend', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      document.addEventListener('touchmove', move, {passive: false});
+      document.addEventListener('touchend', up);
+    };
+
+    desk.appendChild(el);
+  });
+}
+
+var selBox = document.getElementById('selection-box');
+var isSelecting = false, selStartX = 0, selStartY = 0;
+document.getElementById('desktop').addEventListener('mousedown', function(e) {
+  if (e.target.id !== 'desktop') return;
+  isSelecting = true;
+  selStartX = e.clientX; selStartY = e.clientY;
+  selBox.style.left = e.clientX + 'px';
+  selBox.style.top = e.clientY + 'px';
+  selBox.style.width = '0px';
+  selBox.style.height = '0px';
+  selBox.style.display = 'block';
+  selectedIcons = [];
+  document.querySelectorAll('.desktop-icon').forEach(function(i) { i.classList.remove('selected'); });
+});
+document.addEventListener('mousemove', function(e) {
+  if (!isSelecting) return;
+  var w = e.clientX - selStartX;
+  var h = e.clientY - selStartY;
+  selBox.style.left = (w < 0 ? e.clientX : selStartX) + 'px';
+  selBox.style.top = (h < 0 ? e.clientY : selStartY) + 'px';
+  selBox.style.width = Math.abs(w) + 'px';
+  selBox.style.height = Math.abs(h) + 'px';
+});
+document.addEventListener('mouseup', function() {
+  if (!isSelecting) return;
+  isSelecting = false;
+  selBox.style.display = 'none';
+  var rect = { left: parseInt(selBox.style.left), top: parseInt(selBox.style.top), right: parseInt(selBox.style.left) + parseInt(selBox.style.width), bottom: parseInt(selBox.style.top) + parseInt(selBox.style.height) };
+  document.querySelectorAll('.desktop-icon').forEach(function(icon) {
+    var ir = icon.getBoundingClientRect();
+    if (ir.left < rect.right && ir.right > rect.left && ir.top < rect.bottom && ir.bottom > rect.top) {
+      icon.classList.add('selected');
+      selectedIcons.push(icon);
+    }
+  });
+});
+
+// Контекстное меню рабочего стола — создаёт файлы/папки В C:/Desktop
+document.getElementById('desktop').oncontextmenu = function(e) {
+  if (e.target.id !== 'desktop') return;
+  e.preventDefault();
+  showCtxMenu(e.clientX, e.clientY, [
+    { icon: '📁', label: 'Создать папку', action: function() {
+        var name = prompt('Имя новой папки:', 'Новая папка');
+        if (name) { var p = createFolder('C:/Desktop', name); if (p) renderDesktop(); }
+      }
+    },
+    { icon: '📄', label: 'Создать документ', action: function() {
+        var name = prompt('Имя нового файла:', 'Документ.txt');
+        if (name) { var p = createFile('C:/Desktop', name); if (p) { renderDesktop(); openNotepad(p); } }
+      }
+    },
+    { icon: '📥', label: 'Импорт файла с Windows', action: function() { importFromHost('C:/Desktop', false); } },
+    { icon: '📂', label: 'Импорт папки с Windows', action: function() { importFromHost('C:/Desktop', true); } },
+    '-',
+    { icon: '📋', label: 'Вставить', disabled: !clipboard, action: function() { pasteNode('C:/Desktop'); renderDesktop(); } },
+    { icon: '🔄', label: 'Обновить', action: function() { renderDesktop(); } }
+  ]);
+};
+
+// ================= ПРИЛОЖЕНИЯ =================
+function launchApp(app, path) {
+  if (app === 'explorer') openExplorer(path);
+  else if (app === 'notepad') openNotepad();
+  else if (app === 'browser') openBrowser();
+  else if (app === 'settings') openSettings();
+  else if (app === 'console') openConsole();
+}
+
+function openExplorer(path) {
+  path = path || 'C:/Desktop';
+  createWindow({
+    title: 'Проводник', glyph: '📁', width: 350, height: 420,
+    onMount: function(content, el) {
+      el.classList.add('win-explorer');
+      var current = path;
+      el.dataset.path = current;
+      
+      function render() {
+        el.dataset.path = current;
+        el.querySelector('.title').textContent = '📁 ' + current;
+        var node = FS[current];
+        if (!node) { content.innerHTML = '<p>Папка не найдена</p>'; return; }
+        var html = '<div class="pathBar"><span>' + current + '</span>';
+        if (current !== 'C:/') html += '<button id="upBtn">⬆ Вверх</button>';
+        html += '</div>';
+        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="newFolderBtn">➕ Создать папку</button>';
+        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="newFileBtn">📄 Создать файл</button>';
+        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="importFileBtn">📥 Импорт файла с Windows</button>';
+        html += '<button style="width:100%; padding:8px; margin-bottom:10px; cursor:pointer;" id="importDirBtn">📂 Импорт папки с Windows</button>';
+        html += '<div class="fileGrid" id="grid">';
+        
+        (node.children || []).forEach(function(name) {
+          var p = (current === 'C:/' ? 'C:/' : current + '/') + name;
+          var g = FS[p] && FS[p].type === 'dir' ? '📁' : (name.indexOf('.html') > -1 ? '🌐' : '📄');
+          html += '<div class="fileItem" data-name="' + name + '"><span class="g">' + g + '</span>' + name + '</div>';
+        });
+        html += '</div>';
+        content.innerHTML = html;
+
+        if (current !== 'C:/') {
+          content.querySelector('#upBtn').onclick = function() { current = getParentPath(current); render(); };
+        }
+
+        content.querySelector('#newFolderBtn').onclick = function() {
+          var name = prompt('Имя новой папки:', 'Новая папка');
+          if (name && createFolder(current, name)) render();
+        };
+        content.querySelector('#newFileBtn').onclick = function() {
+          var name = prompt('Имя нового файла:', 'Документ.txt');
+          if (name && createFile(current, name)) render();
+        };
+        content.querySelector('#importFileBtn').onclick = function() { importFromHost(current, false); };
+        content.querySelector('#importDirBtn').onclick = function() { importFromHost(current, true); };
+
+        content.querySelectorAll('.fileItem').forEach(function(item) {
+          var name = item.dataset.name;
+          var p = (current === 'C:/' ? 'C:/' : current + '/') + name;
+          
+          item.onclick = function() {
+            content.querySelectorAll('.fileItem').forEach(function(f) { f.classList.remove('selected'); });
+            item.classList.add('selected');
+          };
+          item.ondblclick = function() {
+            if (!FS[p]) return;
+            if (FS[p].type === 'dir') { current = p; render(); }
+            else if (name.indexOf('.html') > -1) openBrowser('xp://' + name.replace('.html',''));
+            else openNotepad(p);
+          };
+
+          item.oncontextmenu = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showCtxMenu(e.clientX, e.clientY, [
+              { icon: '📂', label: 'Открыть', action: function() { item.ondblclick(); } },
+              { icon: '📋', label: 'Копировать', action: function() { clipboard = { path: p, type: 'copy' }; } },
+              { icon: '✂️', label: 'Вырезать', action: function() { clipboard = { path: p, type: 'cut' }; } },
+              { icon: '📥', label: 'Вставить', disabled: !FS[p] || FS[p].type !== 'dir' || !clipboard, action: function() { pasteNode(p); render(); } },
+              '-',
+              { icon: '🗑️', label: 'Удалить', action: function() {
+                  if (confirm('Удалить ' + name + '?')) { deleteNode(p); render(); renderDesktop(); }
+                }
+              }
+            ]);
+          };
+        });
+      }
+      render();
+      
+      document.addEventListener('fs-updated', function(e) {
+        if (e.detail.dir === current) render();
+      });
+    }
+  });
+}
+
+function openNotepad(filePath) {
+  var file = filePath;
+  var init = (file && FS[file]) ? FS[file].content : '';
+  createWindow({
+    title: 'Блокнот', glyph: '📝', width: 320, height: 380,
+    contentHTML: '<textarea class="note"></textarea><button style="margin-top:10px; padding:10px; font-size:14px; width:100%; cursor:pointer;" id="saveBtn">💾 Сохранить</button>',
+    onMount: function(content) {
+      var ta = content.querySelector('textarea');
+      ta.value = init;
+      content.querySelector('#saveBtn').onclick = function() {
+        var target = file;
+        if (!target) {
+          var name = prompt('Имя файла:', 'Документ.txt');
+          if (!name) return;
+          target = createFile('C:/Desktop', name);
+          if (!target) return;
+          FS[target].content = ta.value;
+          file = target;
+          alert('Сохранено!');
+          renderDesktop();
+        } else {
+          FS[target].content = ta.value;
+          alert('Сохранено!');
+          renderDesktop();
+        }
+      };
+    }
+  });
+}
+
+function openBrowser(startUrl) {
+  createWindow({
+    title: 'Браузер', glyph: '🌐', width: 340, height: 420,
+    contentHTML: '<div class="browser-bar"><input id="url" value="' + (startUrl || 'xp://xp-home') + '"><button id="goBtn">OK</button></div><div class="browser-page" id="page" style="padding:10px;"></div>',
+    onMount: function(content) {
+      var url = content.querySelector('#url');
+      var page = content.querySelector('#page');
+      function nav(addr) {
+        addr = addr.replace(/^xp:\/\//, '').replace(/\.html$/, '');
+        var site = FS['C:/internet/' + addr + '.html'];
+        if (site) page.innerHTML = site.content;
+        else page.innerHTML = '<h1>Ошибка 404</h1><p>Сайт ' + addr + ' не найден.</p>';
+      }
+      content.querySelector('#goBtn').onclick = function() { nav(url.value); };
+      nav(url.value);
+    }
+  });
+}
+
+function openConsole() {
+  createWindow({
+    title: 'Командная строка', glyph: '💻', width: 400, height: 320,
+    contentHTML: '<div class="console" id="consoleOut"></div><div style="display:flex; padding:5px; background:#000;"><span class="prompt" style="color:#fff; margin-right:5px;" id="consolePrompt">C:\\></span><input type="text" id="consoleInput" autocomplete="off" autofocus></div>',
+    onMount: function(content) {
+      var out = content.querySelector('#consoleOut');
+      var inp = content.querySelector('#consoleInput');
+      var prompt = content.querySelector('#consolePrompt');
+      var currentDir = 'C:/';
+      
+      function log(text) {
+        out.innerHTML += '<div class="line">' + text + '</div>';
+        out.scrollTop = out.scrollHeight;
+      }
+      
+      log('XPWeb OS Console v1.0');
+      log('Введите "help" для списка команд.');
+      
+      function updatePrompt() { prompt.textContent = currentDir.replace(/\//g, '\\') + '>'; }
+      updatePrompt();
+      
+      inp.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          var cmd = inp.value.trim();
+          inp.value = '';
+          if (!cmd) return;
+          log('<span style="color:#fff">' + prompt.textContent + '</span> ' + cmd);
+          
+          var parts = cmd.split(' ');
+          var action = parts[0].toLowerCase();
+          var arg = parts.slice(1).join(' ');
+          
+          if (action === 'help') {
+            log('Команды: dir, cd <папка>, mkdir <имя>, touch <имя>, del <имя>, cls, echo <текст>');
+          } else if (action === 'cls') {
+            out.innerHTML = '';
+          } else if (action === 'echo') {
+            log(arg);
+          } else if (action === 'dir') {
+            var node = FS[currentDir];
+            if (!node) { log('Ошибка'); }
+            else {
+              (node.children || []).forEach(function(c) {
+                var p = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + c;
+                log('  ' + (FS[p].type === 'dir' ? '[DIR]  ' : '[FILE] ') + c);
+              });
+            }
+          } else if (action === 'cd') {
+            if (!arg) { log('Текущая: ' + currentDir); }
+            else if (arg === '..') { currentDir = getParentPath(currentDir); updatePrompt(); }
+            else {
+              var newP = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + arg;
+              if (FS[newP] && FS[newP].type === 'dir') { currentDir = newP; updatePrompt(); }
+              else { log('Папка не найдена'); }
+            }
+          } else if (action === 'mkdir') {
+            if (arg && createFolder(currentDir, arg)) log('Папка создана: ' + arg);
+          } else if (action === 'touch') {
+            if (arg && createFile(currentDir, arg)) log('Файл создан: ' + arg);
+          } else if (action === 'del') {
+            var p = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + arg;
+            if (FS[p]) { deleteNode(p); log('Удалено: ' + arg); }
+            else { log('Не найдено'); }
+          } else {
+            log('Команда не найдена');
+          }
+        }
+      };
+    }
+  });
+}
+
+function openSettings() {
+  createWindow({
+    title: 'Настройки', glyph: '⚙️', width: 550, height: 450,
+    onMount: function(content, el) {
+      el.classList.add('maximized');
+      content.innerHTML = '<div class="settings-layout">' +
+          '<div class="settings-sidebar" id="setSidebar">' +
+            '<div class="item active" data-sec="1">1. Язык</div>' +
+            '<div class="item" data-sec="2">2. Экран и звук</div>' +
+            '<div class="item" data-sec="3">3. Сеть</div>' +
+            '<div class="item" data-sec="4">4. Безопасность</div>' +
+            '<div class="item" data-sec="5">5. Аккаунт</div>' +
+            '<div class="item" data-sec="6">6. Сброс</div>' +
+          '</div>' +
+          '<div class="settings-main" id="setContent"></div>' +
+        '</div>';
+
+      var sidebar = content.querySelector('#setSidebar');
+      var main = content.querySelector('#setContent');
+
+      function renderSection(sec) {
+        var html = '';
+        if (sec === '1') {
+          html = '<h3>Язык</h3><div class="settings-row"><label>Системный язык</label><select id="sLang"><option value="ru" '+(config.lang==='ru'?'selected':'')+'>Русский</option><option value="en" '+(config.lang==='en'?'selected':'')+'>English</option></select></div>';
+        } else if (sec === '2') {
+          html = '<h3>Экран и звук</h3><div class="settings-row"><label>Тема</label><select id="sTheme"><option value="light" '+(config.theme==='light'?'selected':'')+'>Светлая</option><option value="dark" '+(config.theme==='dark'?'selected':'')+'>Тёмная</option></select></div><div class="settings-row"><label>Яркость</label><input type="range" id="sBright" min="30" max="100" value="'+config.bright+'"></div><div class="settings-row"><label>Громкость</label><input type="range" id="sVol" min="0" max="100" value="'+config.vol+'"></div>';
+        } else if (sec === '3') {
+          html = '<h3>Сеть</h3><div class="settings-row"><label>Wi-Fi</label><button id="sWifi" style="padding:8px 16px; cursor:pointer;">'+(config.wifi?'ON':'OFF')+'</button></div>';
+        } else if (sec === '4') {
+          html = '<h3>Безопасность</h3><div class="settings-row"><label>Брандмауэр</label><button id="sFW" style="padding:8px; cursor:pointer;">'+(config.firewall?'ON':'OFF')+'</button></div>';
+        } else if (sec === '5') {
+          html = '<h3>Аккаунт</h3><div class="settings-row"><label>Имя</label><input type="text" id="sUserName" value="'+config.userName+'"></div><div class="settings-row"><label>Аватар</label><input type="text" id="sUserAvatar" value="'+config.userAvatar+'"></div>';
+        } else if (sec === '6') {
+          html = '<h3>Сброс</h3><div class="settings-row"><button id="sReset" style="padding:10px; background:#d44; color:#fff; border:none; border-radius:4px; cursor:pointer;">Сбросить систему</button></div>';
+        }
+        main.innerHTML = html;
+
+        if (sec === '1') main.querySelector('#sLang').onchange = function(e) { config.lang = e.target.value; applyConfig(); };
+        if (sec === '2') {
+          main.querySelector('#sTheme').onchange = function(e) { config.theme = e.target.value; applyConfig(); };
+          main.querySelector('#sBright').oninput = function(e) { config.bright = e.target.value; applyConfig(); };
+          main.querySelector('#sVol').oninput = function(e) { config.vol = e.target.value; applyConfig(); };
+        }
+        if (sec === '3') main.querySelector('#sWifi').onclick = function() { config.wifi = !config.wifi; applyConfig(); renderSection('3'); };
+        if (sec === '4') main.querySelector('#sFW').onclick = function() { config.firewall = !config.firewall; renderSection('4'); };
+        if (sec === '5') {
+          main.querySelector('#sUserName').oninput = function(e) { config.userName = e.target.value; applyConfig(); };
+          main.querySelector('#sUserAvatar').oninput = function(e) { config.userAvatar = e.target.value; applyConfig(); };
+        }
+        if (sec === '6') main.querySelector('#sReset').onclick = function() {
+          if (confirm('Вы уверены?')) { localStorage.removeItem(USER_KEY); location.reload(); }
+        };
+      }
+
+      sidebar.querySelectorAll('.item').forEach(function(item) {
+        item.onclick = function() {
+          sidebar.querySelectorAll('.item').forEach(function(i) { i.classList.remove('active'); });
+          item.classList.add('active');
+          renderSection(item.dataset.sec);
+        };
+      });
+      renderSection('1');
+    }
+  });
+}
+
+var startMenu = document.getElementById('startMenu');
+var startBody = document.getElementById('startBody');
+
+function buildStartMenu() {
+  startBody.innerHTML = '<div class="startItem" data-app="explorer" data-path="C:/Desktop"><span class="g">🖥️</span>Рабочий стол</div>' +
+    '<div class="startItem" data-app="explorer" data-path="C:/Documents"><span class="g">📁</span>Документы</div>' +
+    '<div class="startItem" data-app="browser"><span class="g">🌐</span>Браузер</div>' +
+    '<div class="startItem" data-app="notepad"><span class="g">📝</span>Блокнот</div>' +
+    '<div class="startItem" data-app="console"><span class="g">💻</span>Командная строка</div>' +
+    '<div class="startItem" data-app="settings"><span class="g">⚙️</span>Настройки</div>';
+  startBody.querySelectorAll('.startItem').forEach(function(el) {
+    el.onclick = function() { launchApp(el.dataset.app, el.dataset.path); startMenu.classList.remove('open'); };
+  });
+}
+
+document.getElementById('startBtn').onclick = function(e) {
+  e.stopPropagation();
+  var opening = !startMenu.classList.contains('open');
+  startMenu.classList.toggle('open');
+  if (opening) buildStartMenu();
+};
+
+document.addEventListener('click', function(e) {
+  if (!startMenu.contains(e.target) && e.target.id !== 'startBtn') startMenu.classList.remove('open');
+});
+
+document.getElementById('trayTheme').onclick = function() { config.theme = config.theme === 'light' ? 'dark' : 'light'; applyConfig(); };
+document.getElementById('trayVolume').onclick = function() { config.vol = config.vol === 0 ? 80 : 0; applyConfig(); };
+document.getElementById('trayWifi').onclick = function() { config.wifi = !config.wifi; applyConfig(); };
+
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'c' && selectedIcons.length === 1) {
+    var id = selectedIcons[0].dataset.id;
+    if (id && id.indexOf('fs:') === 0) clipboard = { path: id.substring(3), type: 'copy' };
+  }
+  if (e.ctrlKey && e.key === 'x' && selectedIcons.length === 1) {
+    var id = selectedIcons[0].dataset.id;
+    if (id && id.indexOf('fs:') === 0) clipboard = { path: id.substring(3), type: 'cut' };
+  }
+  if (e.ctrlKey && e.key === 'v' && clipboard) {
+    pasteNode('C:/Desktop'); renderDesktop();
+  }
+  if (e.key === 'Delete' && selectedIcons.length > 0) {
+    selectedIcons.forEach(function(icon) {
+      var id = icon.dataset.id;
+      if (id && id.indexOf('fs:') === 0) deleteNode(id.substring(3));
+    });
+    selectedIcons = [];
+    renderDesktop();
+  }
+});
+
+document.getElementById('btnShutdown').onclick = function() {
+  document.body.innerHTML = '<div style="color:white; background:black; width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:24px;">Завершение работы...</div>';
+  setTimeout(function() { location.reload(); }, 2000);
+};
+
+checkAuth();
+</script>
+</body>
+</html>
