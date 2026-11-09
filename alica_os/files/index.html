@@ -54,7 +54,7 @@
   .win .titlebar .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .win .btn { width: 26px; height: 24px; border: 1px solid #fff; border-radius: 3px; background: rgba(255,255,255,0.2); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .win .btn.close { background: #d44; }
-  .win .content { flex: 1; overflow: auto; background: var(--bg-content); padding: 10px; font-size: var(--font-size); position: relative; }
+  .win .content { flex: 1; overflow: auto; background: var(--bg-content); padding: 10px; font-size: var(--font-size); position: relative; display: flex; flex-direction: column; }
   .win.minimized { display: none; }
   .win.maximized { left: 0 !important; top: 0 !important; width: 100% !important; height: calc(100% - 48px) !important; border-radius: 0; }
   
@@ -75,7 +75,7 @@
   #startFooter { padding: 8px; background: var(--win-titlebar); display: flex; justify-content: flex-end; gap: 8px; }
   #startFooter button { padding: 6px 12px; font-size: 13px; border-radius: 3px; cursor: pointer; }
 
-  .fileGrid { display: grid; grid-template-columns: repeat(auto-fill, 75px); gap: 8px; position: relative; min-height: 100px; }
+  .fileGrid { display: grid; grid-template-columns: repeat(auto-fill, 75px); gap: 8px; position: relative; min-height: 100px; flex: 1; overflow-y: auto; align-content: start; }
   .fileItem { text-align: center; padding: 6px 2px; border-radius: 3px; font-size: 12px; cursor: pointer; word-wrap: break-word; line-height: 1.2; }
   .fileItem:hover { background: var(--file-item-hover); }
   .fileItem.selected { background: #316ac5; color: #fff; }
@@ -89,7 +89,7 @@
   .ctxMenu .item.disabled { opacity: 0.5; pointer-events: none; }
   .ctxMenu .sep { height: 1px; background: #ddd; margin: 4px 0; }
 
-  textarea.note { width: 100%; height: calc(100% - 50px); border: 1px solid #ccc; padding: 10px; font-size: 14px; outline: none; background: var(--bg-content); color: var(--text-main); }
+  textarea.note { width: 100%; height: calc(100% - 50px); border: 1px solid #ccc; padding: 10px; font-size: 14px; outline: none; background: var(--bg-content); color: var(--text-main); resize: none; flex: 1; }
   .browser-bar { display: flex; gap: 6px; margin-bottom: 10px; }
   .browser-bar input { flex: 1; padding: 8px; border: 1px solid #888; font-size: 14px; }
   .browser-bar button { padding: 8px 12px; font-size: 14px; cursor: pointer; }
@@ -105,9 +105,47 @@
   .settings-row label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 13px; }
   .settings-row select, .settings-row input[type="range"], .settings-row input[type="text"], .settings-row input[type="password"] { width: 100%; padding: 6px; border: 1px solid #888; border-radius: 3px; background: var(--bg-content); color: var(--text-main); }
 
-  .console { background: #000; color: #0f0; font-family: monospace; padding: 10px; height: 100%; overflow-y: auto; font-size: 13px; }
-  .console .line { margin-bottom: 2px; word-wrap: break-word; }
-  .console input { background: transparent; border: none; outline: none; color: #0f0; font-family: monospace; font-size: 13px; width: 80%; }
+  .linux-terminal {
+    background-color: #0c0c0c;
+    color: #cccccc;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.3;
+  }
+  .linux-terminal .prompt-user { color: #4af626; font-weight: bold; }
+  .linux-terminal .prompt-path { color: #00aaff; font-weight: bold; }
+  .linux-terminal .error { color: #ff5555; }
+  .linux-terminal-input-row {
+    display: flex;
+    padding: 5px 10px;
+    background-color: #0c0c0c;
+  }
+  .linux-terminal-input-row .prompt {
+    color: #4af626;
+    font-family: 'Consolas', monospace;
+    font-size: 14px;
+    margin-right: 5px;
+    white-space: nowrap;
+  }
+  .linux-terminal-input-row input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #cccccc;
+    font-family: 'Consolas', monospace;
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .sysinfo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .sysinfo-table td { padding: 8px; border-bottom: 1px solid #ddd; }
+  .sysinfo-table td:first-child { font-weight: bold; width: 40%; color: #555; }
+  .sysinfo-table td:last-child { color: #000; }
 </style>
 </head>
 <body>
@@ -183,12 +221,60 @@ var winZ = 100, winIdSeq = 1;
 var openWindows = {};
 var selectedIcons = [];
 
-// Системные приложения (ярлыки, не файлы)
+const OS_API = {
+  async ls(path) {
+    try {
+      const res = await fetch(`/api/ls?path=${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error('Network response was not ok');
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch(e) { 
+      console.error("API ls error:", e); 
+      return []; 
+    }
+  },
+  async mkdir(path, name) {
+    try {
+      const res = await fetch(`/api/create?type=dir&path=${encodeURIComponent(path + '/' + name)}`);
+      return res.ok;
+    } catch(e) { return false; }
+  },
+  async touch(path, name) {
+    try {
+      const res = await fetch(`/api/create?type=file&path=${encodeURIComponent(path + '/' + name)}`);
+      return res.ok;
+    } catch(e) { return false; }
+  },
+  async rm(path) {
+    try {
+      await fetch(`/api/delete?path=${encodeURIComponent(path)}`);
+    } catch(e) {}
+  },
+  async read(path) {
+    try {
+      const res = await fetch(`/api/read?path=${encodeURIComponent(path)}`);
+      return await res.text();
+    } catch(e) { return 'Ошибка чтения'; }
+  },
+  async write(path, content) {
+    try {
+      await fetch(`/api/write?path=${encodeURIComponent(path)}&content=${encodeURIComponent(content)}`);
+    } catch(e) {}
+  },
+  async exec(cmd) {
+    try {
+      const res = await fetch(`/api/exec?cmd=${encodeURIComponent(cmd)}`);
+      return await res.text();
+    } catch(e) { return 'Ошибка выполнения'; }
+  }
+};
+
 var SYSTEM_ICONS = [
   { id: 'sys:docs', label: 'Мои документы', glyph: '📁', app: 'explorer', path: 'C:/Documents' },
+  { id: 'sys:real', label: 'Колонка (Linux)', glyph: '🐧', app: 'explorer', path: '/data' },
   { id: 'sys:browser', label: 'Браузер', glyph: '🌐', app: 'browser' },
   { id: 'sys:notepad', label: 'Блокнот', glyph: '📝', app: 'notepad' },
-  { id: 'sys:console', label: 'Консоль', glyph: '💻', app: 'console' },
+  { id: 'sys:console', label: 'Терминал', glyph: '💻', app: 'console' },
   { id: 'sys:settings', label: 'Настройки', glyph: '⚙️', app: 'settings' }
 ];
 
@@ -203,10 +289,11 @@ function resetFS() {
   };
   ICONS_POS = {
     'sys:docs':    { x: 10, y: 10 },
-    'sys:browser': { x: 10, y: 105 },
-    'sys:notepad': { x: 10, y: 200 },
-    'sys:settings':{ x: 10, y: 295 },
-    'sys:console': { x: 10, y: 390 }
+    'sys:real':    { x: 10, y: 105 },
+    'sys:browser': { x: 10, y: 200 },
+    'sys:notepad': { x: 10, y: 295 },
+    'sys:settings':{ x: 10, y: 390 },
+    'sys:console': { x: 10, y: 485 }
   };
 }
 resetFS();
@@ -274,6 +361,10 @@ function applyConfig() {
 }
 
 function getParentPath(p) {
+  if (p.startsWith('/')) {
+    var idx = p.lastIndexOf('/');
+    return idx <= 0 ? '/' : p.substring(0, idx);
+  }
   var idx = p.lastIndexOf('/');
   if (idx <= 2) return 'C:/';
   return p.substring(0, idx);
@@ -283,8 +374,12 @@ function getBaseName(p) {
   return p.substring(p.lastIndexOf('/') + 1);
 }
 
-// ================= ФАЙЛОВАЯ СИСТЕМА =================
+// ================= ВИРТУАЛЬНАЯ ФС =================
 function deleteNode(path) {
+  if (path.startsWith('/')) {
+    OS_API.rm(path);
+    return true;
+  }
   if (path === 'C:/' || path === 'C:/Desktop' || path === 'C:/Documents' || path === 'C:/internet') {
     alert('Нельзя удалить системную папку!'); return false;
   }
@@ -334,6 +429,21 @@ function uniquePath(dir, name) {
 
 function pasteNode(targetDir) {
   if (!clipboard) return;
+  if (clipboard.path.startsWith('/')) {
+    if (!targetDir.startsWith('/')) {
+        alert('Нельзя вставить реальный файл в виртуальную папку.');
+        return;
+    }
+    var newP = targetDir + '/' + getBaseName(clipboard.path);
+    OS_API.exec(`cp -r "${clipboard.path}" "${newP}"`).then(function(){
+        if (clipboard.type === 'cut') OS_API.rm(clipboard.path);
+        clipboard = null;
+        renderDesktop();
+        document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: targetDir } }));
+    });
+    return;
+  }
+
   if (!FS[targetDir] || FS[targetDir].type !== 'dir') return;
   if (!FS[targetDir].children) FS[targetDir].children = [];
   if (!FS[clipboard.path]) { clipboard = null; return; }
@@ -347,6 +457,13 @@ function pasteNode(targetDir) {
 }
 
 function createFolder(dir, name) {
+  if (dir.startsWith('/')) {
+    OS_API.mkdir(dir, name).then(function(success){
+      if (success) document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+      else alert('Ошибка создания папки');
+    });
+    return true;
+  }
   if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return null; }
   if (!FS[dir].children) FS[dir].children = [];
   name = (name || '').trim();
@@ -358,6 +475,13 @@ function createFolder(dir, name) {
 }
 
 function createFile(dir, name) {
+  if (dir.startsWith('/')) {
+    OS_API.touch(dir, name).then(function(success){
+      if (success) document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+      else alert('Ошибка создания файла');
+    });
+    return true;
+  }
   if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return null; }
   if (!FS[dir].children) FS[dir].children = [];
   name = (name || '').trim();
@@ -368,16 +492,16 @@ function createFile(dir, name) {
   return u.path;
 }
 
-// ================= ИМПОРТ С WINDOWS (файлы И папки) =================
-// dir — виртуальная папка назначения
 function importFromHost(dir, allowDirs) {
+  if (dir.startsWith('/')) {
+    alert('Импорт пока работает только в виртуальную систему.'); return;
+  }
   if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return; }
   
   var input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
   if (allowDirs) {
-    // webkitdirectory позволяет выбрать ПАПКУ целиком (рекурсивно)
     input.setAttribute('webkitdirectory', '');
     input.setAttribute('directory', '');
   }
@@ -390,13 +514,11 @@ function importFromHost(dir, allowDirs) {
     
     var pending = files.length;
     files.forEach(function(f) {
-      // f.webkitRelativePath = "Folder/sub/file.txt" для папок; "" для одиночных файлов
       var rel = f.webkitRelativePath || f.name;
       var parts = rel.split('/').filter(Boolean);
       var reader = new FileReader();
       reader.onload = function(ev) {
         var content = ev.target.result;
-        // Создаём вложенные папки по пути
         var cur = dir;
         for (var i = 0; i < parts.length - 1; i++) {
           var sub = parts[i];
@@ -409,7 +531,6 @@ function importFromHost(dir, allowDirs) {
           if (FS[sp].type !== 'dir') break;
           cur = sp;
         }
-        if (cur === dir && parts.length > 1) { /* вложенность не построилась — кладём в корень */ }
         var fname = parts[parts.length - 1];
         var u = uniquePath(cur, fname);
         FS[u.path] = { type: 'file', content: content };
@@ -517,11 +638,9 @@ function renderTaskbar() {
   }
 }
 
-// ================= КОНТЕКСТНОЕ МЕНЮ =================
 function showCtxMenu(x, y, items) {
   var old = document.querySelector('.ctxMenu');
   if (old) old.remove();
-
   var menu = document.createElement('div');
   menu.className = 'ctxMenu';
   menu.innerHTML = items.map(function(it, i) {
@@ -529,44 +648,25 @@ function showCtxMenu(x, y, items) {
     return '<div class="item ' + (it.disabled ? 'disabled' : '') + '" data-i="' + i + '"><span>' + (it.icon || '') + '</span>' + it.label + '</div>';
   }).join('');
   document.body.appendChild(menu);
-  
   var w = menu.offsetWidth, h = menu.offsetHeight;
   menu.style.left = Math.min(x, window.innerWidth - w - 10) + 'px';
   menu.style.top = Math.min(y, window.innerHeight - h - 10) + 'px';
-
   menu.querySelectorAll('.item').forEach(function(el) {
     el.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-    el.addEventListener('touchstart', function(e) { e.stopPropagation(); }, {passive: true});
-    el.onclick = function(e) { 
-      e.stopPropagation(); 
-      menu.remove(); 
-      items[+el.dataset.i].action(); 
-    };
+    el.onclick = function(e) { e.stopPropagation(); menu.remove(); items[+el.dataset.i].action(); };
   });
-  
-  function outsideClose(e) {
-    if (!menu.contains(e.target)) {
-      menu.remove();
-      document.removeEventListener('mousedown', outsideClose);
-      document.removeEventListener('touchstart', outsideClose);
-    }
-  }
   setTimeout(function() {
-    document.addEventListener('mousedown', outsideClose);
-    document.addEventListener('touchstart', outsideClose, {passive: true});
+    document.addEventListener('mousedown', function close(e) {
+      if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', close); }
+    });
   }, 100);
 }
 
-// ================= РАБОЧИЙ СТОЛ =================
-// Рабочий стол = системные ярлыки + содержимое C:/Desktop
 function renderDesktop() {
   var desk = document.getElementById('desktop');
   document.querySelectorAll('.desktop-icon').forEach(function(e) { e.remove(); });
-  
   var items = [];
-  // 1) Системные ярлыки
   SYSTEM_ICONS.forEach(function(ic) { items.push({ kind: 'sys', ic: ic }); });
-  // 2) Реальное содержимое C:/Desktop
   var desktopDir = FS['C:/Desktop'];
   if (desktopDir && desktopDir.children) {
     desktopDir.children.forEach(function(name) {
@@ -575,27 +675,22 @@ function renderDesktop() {
       items.push({ kind: 'fs', path: p, name: name, type: FS[p].type });
     });
   }
-
   items.forEach(function(it) {
     var id, label, glyph, app, path;
     if (it.kind === 'sys') {
       id = it.ic.id; label = it.ic.label; glyph = it.ic.glyph; app = it.ic.app; path = it.ic.path;
     } else {
-      id = 'fs:' + it.path;
-      label = it.name;
+      id = 'fs:' + it.path; label = it.name;
       glyph = it.type === 'dir' ? '📁' : (it.name.indexOf('.html') > -1 ? '🌐' : '📄');
       app = it.type === 'dir' ? 'explorer' : (it.name.indexOf('.html') > -1 ? 'browser' : 'notepad');
       path = it.path;
     }
-
     var pos = ICONS_POS[id] || { x: 10, y: 10 };
     var el = document.createElement('div');
     el.className = 'desktop-icon';
     el.dataset.id = id;
-    el.style.left = pos.x + 'px';
-    el.style.top = pos.y + 'px';
+    el.style.left = pos.x + 'px'; el.style.top = pos.y + 'px';
     el.innerHTML = '<span class="glyph">' + glyph + '</span>' + label;
-    
     el.onclick = function(e) {
       e.stopPropagation();
       if (!e.ctrlKey) {
@@ -611,10 +706,8 @@ function renderDesktop() {
       else if (it.name.indexOf('.html') > -1) openBrowser('xp://' + it.name.replace('.html',''));
       else openNotepad(path);
     };
-
     el.oncontextmenu = function(e) {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       var menuItems = [];
       if (it.kind === 'sys') {
         menuItems.push({ icon: '📂', label: 'Открыть', action: function() { launchApp(app, path); } });
@@ -633,15 +726,12 @@ function renderDesktop() {
       }
       showCtxMenu(e.clientX, e.clientY, menuItems);
     };
-
-    // Перетаскивание
     var isDragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
     el.onmousedown = el.ontouchstart = function(e) {
       isDragging = false;
       var pt = e.touches ? e.touches[0] : e;
       startX = pt.clientX; startY = pt.clientY;
       origX = parseInt(el.style.left); origY = parseInt(el.style.top);
-      
       function move(ev) {
         var p = ev.touches ? ev.touches[0] : ev;
         if (Math.abs(p.clientX - startX) > 5 || Math.abs(p.clientY - startY) > 5) {
@@ -651,20 +741,13 @@ function renderDesktop() {
         }
       }
       function up(ev) {
-        if (isDragging) {
-          ICONS_POS[id] = { x: parseInt(el.style.left), y: parseInt(el.style.top) };
-        }
+        if (isDragging) ICONS_POS[id] = { x: parseInt(el.style.left), y: parseInt(el.style.top) };
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
-        document.removeEventListener('touchmove', move);
-        document.removeEventListener('touchend', up);
       }
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
-      document.addEventListener('touchmove', move, {passive: false});
-      document.addEventListener('touchend', up);
     };
-
     desk.appendChild(el);
   });
 }
@@ -675,10 +758,8 @@ document.getElementById('desktop').addEventListener('mousedown', function(e) {
   if (e.target.id !== 'desktop') return;
   isSelecting = true;
   selStartX = e.clientX; selStartY = e.clientY;
-  selBox.style.left = e.clientX + 'px';
-  selBox.style.top = e.clientY + 'px';
-  selBox.style.width = '0px';
-  selBox.style.height = '0px';
+  selBox.style.left = e.clientX + 'px'; selBox.style.top = e.clientY + 'px';
+  selBox.style.width = '0px'; selBox.style.height = '0px';
   selBox.style.display = 'block';
   selectedIcons = [];
   document.querySelectorAll('.desktop-icon').forEach(function(i) { i.classList.remove('selected'); });
@@ -706,7 +787,6 @@ document.addEventListener('mouseup', function() {
   });
 });
 
-// Контекстное меню рабочего стола — создаёт файлы/папки В C:/Desktop
 document.getElementById('desktop').oncontextmenu = function(e) {
   if (e.target.id !== 'desktop') return;
   e.preventDefault();
@@ -729,95 +809,125 @@ document.getElementById('desktop').oncontextmenu = function(e) {
   ]);
 };
 
-// ================= ПРИЛОЖЕНИЯ =================
 function launchApp(app, path) {
   if (app === 'explorer') openExplorer(path);
-  else if (app === 'notepad') openNotepad();
-  else if (app === 'browser') openBrowser();
+  else if (app === 'notepad') openNotepad(path);
+  else if (app === 'browser') openBrowser(path);
   else if (app === 'settings') openSettings();
   else if (app === 'console') openConsole();
 }
 
 function openExplorer(path) {
   path = path || 'C:/Desktop';
+  var isReal = path.startsWith('/');
+  
   createWindow({
-    title: 'Проводник', glyph: '📁', width: 350, height: 420,
+    title: 'Проводник', glyph: '📁', width: 400, height: 500,
     onMount: function(content, el) {
       el.classList.add('win-explorer');
       var current = path;
-      el.dataset.path = current;
       
-      function render() {
-        el.dataset.path = current;
+      async function render() {
+        isReal = current.startsWith('/');
         el.querySelector('.title').textContent = '📁 ' + current;
-        var node = FS[current];
-        if (!node) { content.innerHTML = '<p>Папка не найдена</p>'; return; }
-        var html = '<div class="pathBar"><span>' + current + '</span>';
-        if (current !== 'C:/') html += '<button id="upBtn">⬆ Вверх</button>';
-        html += '</div>';
-        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="newFolderBtn">➕ Создать папку</button>';
-        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="newFileBtn">📄 Создать файл</button>';
-        html += '<button style="width:100%; padding:8px; margin-bottom:5px; cursor:pointer;" id="importFileBtn">📥 Импорт файла с Windows</button>';
-        html += '<button style="width:100%; padding:8px; margin-bottom:10px; cursor:pointer;" id="importDirBtn">📂 Импорт папки с Windows</button>';
-        html += '<div class="fileGrid" id="grid">';
+        content.innerHTML = '<div class="pathBar"><span>' + current + '</span>' + (current !== 'C:/' && current !== '/' ? '<button id="upBtn">⬆ Вверх</button>' : '') + '</div>';
         
-        (node.children || []).forEach(function(name) {
-          var p = (current === 'C:/' ? 'C:/' : current + '/') + name;
-          var g = FS[p] && FS[p].type === 'dir' ? '📁' : (name.indexOf('.html') > -1 ? '🌐' : '📄');
-          html += '<div class="fileItem" data-name="' + name + '"><span class="g">' + g + '</span>' + name + '</div>';
-        });
-        html += '</div>';
-        content.innerHTML = html;
-
-        if (current !== 'C:/') {
-          content.querySelector('#upBtn').onclick = function() { current = getParentPath(current); render(); };
+        if (!isReal) {
+          var realBtn = document.createElement('button');
+          realBtn.textContent = '🐧 Перейти на реальный диск (Linux)';
+          realBtn.style.cssText = 'width:100%; padding:8px; margin-bottom:10px; cursor:pointer; background:#d4e157; border:1px solid #999; font-weight:bold;';
+          realBtn.onclick = function() { current = '/data'; render(); };
+          content.appendChild(realBtn);
         }
 
-        content.querySelector('#newFolderBtn').onclick = function() {
-          var name = prompt('Имя новой папки:', 'Новая папка');
-          if (name && createFolder(current, name)) render();
-        };
-        content.querySelector('#newFileBtn').onclick = function() {
-          var name = prompt('Имя нового файла:', 'Документ.txt');
-          if (name && createFile(current, name)) render();
-        };
-        content.querySelector('#importFileBtn').onclick = function() { importFromHost(current, false); };
-        content.querySelector('#importDirBtn').onclick = function() { importFromHost(current, true); };
+        var actions = document.createElement('div');
+        actions.style.display = 'flex'; actions.style.gap = '5px'; actions.style.marginBottom = '10px';
+        actions.innerHTML = '<button id="newFolderBtn" style="flex:1; padding:5px; cursor:pointer;">+ Папка</button><button id="newFileBtn" style="flex:1; padding:5px; cursor:pointer;">+ Файл</button>';
+        if (!isReal) actions.innerHTML += '<button id="importFileBtn" style="flex:1; padding:5px; cursor:pointer;">📥 Импорт</button>';
+        content.appendChild(actions);
+        
+        var grid = document.createElement('div');
+        grid.className = 'fileGrid';
+        content.appendChild(grid);
 
-        content.querySelectorAll('.fileItem').forEach(function(item) {
-          var name = item.dataset.name;
-          var p = (current === 'C:/' ? 'C:/' : current + '/') + name;
-          
+        var files = [];
+        if (isReal) {
+            files = await OS_API.ls(current);
+        } else {
+            var node = FS[current];
+            if (node && node.children) {
+                node.children.forEach(function(name) {
+                    var p = (current === 'C:/' ? 'C:/' : current + '/') + name;
+                    files.push({ name: name, type: FS[p].type });
+                });
+            }
+        }
+        
+        files.forEach(function(f) {
+          var item = document.createElement('div');
+          item.className = 'fileItem';
+          var g = f.type === 'dir' ? '📁' : (f.name.indexOf('.html') > -1 ? '🌐' : '📄');
+          item.innerHTML = '<span class="g">' + g + '</span>' + f.name;
           item.onclick = function() {
-            content.querySelectorAll('.fileItem').forEach(function(f) { f.classList.remove('selected'); });
+            grid.querySelectorAll('.fileItem').forEach(function(fi) { fi.classList.remove('selected'); });
             item.classList.add('selected');
           };
           item.ondblclick = function() {
-            if (!FS[p]) return;
-            if (FS[p].type === 'dir') { current = p; render(); }
-            else if (name.indexOf('.html') > -1) openBrowser('xp://' + name.replace('.html',''));
+            var p = (current === '/' ? '' : current) + '/' + f.name;
+            if (f.type === 'dir') { current = p; render(); }
+            else if (f.name.indexOf('.html') > -1) openBrowser(isReal ? p : 'xp://' + f.name.replace('.html',''));
             else openNotepad(p);
           };
-
           item.oncontextmenu = function(e) {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
+            var filePath = (current === '/' ? '' : current) + '/' + f.name;
             showCtxMenu(e.clientX, e.clientY, [
-              { icon: '📂', label: 'Открыть', action: function() { item.ondblclick(); } },
-              { icon: '📋', label: 'Копировать', action: function() { clipboard = { path: p, type: 'copy' }; } },
-              { icon: '✂️', label: 'Вырезать', action: function() { clipboard = { path: p, type: 'cut' }; } },
-              { icon: '📥', label: 'Вставить', disabled: !FS[p] || FS[p].type !== 'dir' || !clipboard, action: function() { pasteNode(p); render(); } },
+              { icon: '📂', label: 'Открыть', action: item.ondblclick },
+              '-',
+              { icon: '📋', label: 'Копировать', action: function() { clipboard = { path: filePath, type: 'copy' }; } },
+              { icon: '✂️', label: 'Вырезать', action: function() { clipboard = { path: filePath, type: 'cut' }; } },
+              { icon: '📥', label: 'Вставить', disabled: !clipboard || f.type !== 'dir', action: function() { pasteNode(filePath); render(); } },
               '-',
               { icon: '🗑️', label: 'Удалить', action: function() {
-                  if (confirm('Удалить ' + name + '?')) { deleteNode(p); render(); renderDesktop(); }
+                  if (confirm('Удалить ' + f.name + '?')) { deleteNode(filePath); render(); renderDesktop(); }
                 }
               }
             ]);
           };
+          grid.appendChild(item);
         });
+
+        if (current !== 'C:/' && current !== '/') {
+          content.querySelector('#upBtn').onclick = function() { current = getParentPath(current); render(); };
+        }
+
+        content.querySelector('#newFolderBtn').onclick = async function() {
+          var name = prompt('Имя папки:');
+          if (name) { 
+            if (isReal) {
+              await OS_API.mkdir(current, name);
+              await render();
+            } else {
+              createFolder(current, name); 
+              await render(); 
+            }
+          }
+        };
+        content.querySelector('#newFileBtn').onclick = async function() {
+          var name = prompt('Имя файла:', 'file.txt');
+          if (name) { 
+            if (isReal) {
+              await OS_API.touch(current, name);
+              await render();
+            } else {
+              createFile(current, name); 
+              await render(); 
+            }
+          }
+        };
+        if (!isReal) content.querySelector('#importFileBtn').onclick = function() { importFromHost(current, false); };
       }
       render();
-      
       document.addEventListener('fs-updated', function(e) {
         if (e.detail.dir === current) render();
       });
@@ -826,30 +936,50 @@ function openExplorer(path) {
 }
 
 function openNotepad(filePath) {
-  var file = filePath;
-  var init = (file && FS[file]) ? FS[file].content : '';
+  if (!filePath) {
+    createWindow({
+      title: 'Блокнот', glyph: '📝', width: 320, height: 380,
+      contentHTML: '<textarea class="note"></textarea><button style="margin-top:10px; padding:10px; font-size:14px; width:100%; cursor:pointer;" id="saveBtn">💾 Сохранить</button>',
+      onMount: function(content) {
+        var ta = content.querySelector('textarea');
+        content.querySelector('#saveBtn').onclick = async function() {
+          var name = prompt('Имя файла (путь):', 'C:/Desktop/Документ.txt');
+          if (!name) return;
+          if (name.startsWith('/')) {
+              await OS_API.write(name, ta.value);
+          } else {
+              FS[name] = { type: 'file', content: ta.value };
+          }
+          alert('Сохранено: ' + name);
+          renderDesktop();
+        };
+      }
+    });
+    return;
+  }
+
+  var isReal = filePath.startsWith('/');
+  var init = '';
+  
   createWindow({
     title: 'Блокнот', glyph: '📝', width: 320, height: 380,
     contentHTML: '<textarea class="note"></textarea><button style="margin-top:10px; padding:10px; font-size:14px; width:100%; cursor:pointer;" id="saveBtn">💾 Сохранить</button>',
     onMount: function(content) {
       var ta = content.querySelector('textarea');
-      ta.value = init;
-      content.querySelector('#saveBtn').onclick = function() {
-        var target = file;
-        if (!target) {
-          var name = prompt('Имя файла:', 'Документ.txt');
-          if (!name) return;
-          target = createFile('C:/Desktop', name);
-          if (!target) return;
-          FS[target].content = ta.value;
-          file = target;
-          alert('Сохранено!');
-          renderDesktop();
+      if (isReal) {
+          OS_API.read(filePath).then(function(text){ ta.value = text; });
+      } else {
+          ta.value = (FS[filePath] && FS[filePath].content) ? FS[filePath].content : '';
+      }
+      
+      content.querySelector('#saveBtn').onclick = async function() {
+        if (isReal) {
+            await OS_API.write(filePath, ta.value);
         } else {
-          FS[target].content = ta.value;
-          alert('Сохранено!');
-          renderDesktop();
+            if (FS[filePath]) FS[filePath].content = ta.value;
         }
+        alert('Сохранено: ' + filePath);
+        renderDesktop();
       };
     }
   });
@@ -862,11 +992,20 @@ function openBrowser(startUrl) {
     onMount: function(content) {
       var url = content.querySelector('#url');
       var page = content.querySelector('#page');
-      function nav(addr) {
-        addr = addr.replace(/^xp:\/\//, '').replace(/\.html$/, '');
-        var site = FS['C:/internet/' + addr + '.html'];
-        if (site) page.innerHTML = site.content;
-        else page.innerHTML = '<h1>Ошибка 404</h1><p>Сайт ' + addr + ' не найден.</p>';
+      async function nav(addr) {
+        if (addr.startsWith('xp://')) {
+            addr = addr.replace('xp://', '').replace('.html','');
+            var site = FS['C:/internet/' + addr + '.html'];
+            if (site) page.innerHTML = site.content;
+            else page.innerHTML = '<h1>Ошибка 404</h1>';
+        } else if (addr.startsWith('/')) {
+            page.innerHTML = 'Загрузка...';
+            var text = await OS_API.read(addr);
+            if (text.indexOf('Ошибка') > -1 || !text) page.innerHTML = '<h1>Ошибка 404</h1>';
+            else page.innerHTML = text;
+        } else {
+            page.innerHTML = '<h1>Ошибка 404</h1><p>Неизвестный протокол.</p>';
+        }
       }
       content.querySelector('#goBtn').onclick = function() { nav(url.value); };
       nav(url.value);
@@ -876,69 +1015,57 @@ function openBrowser(startUrl) {
 
 function openConsole() {
   createWindow({
-    title: 'Командная строка', glyph: '💻', width: 400, height: 320,
-    contentHTML: '<div class="console" id="consoleOut"></div><div style="display:flex; padding:5px; background:#000;"><span class="prompt" style="color:#fff; margin-right:5px;" id="consolePrompt">C:\\></span><input type="text" id="consoleInput" autocomplete="off" autofocus></div>',
+    title: 'Терминал', glyph: '💻', width: 550, height: 400,
     onMount: function(content) {
-      var out = content.querySelector('#consoleOut');
-      var inp = content.querySelector('#consoleInput');
-      var prompt = content.querySelector('#consolePrompt');
-      var currentDir = 'C:/';
+      content.style.padding = '0';
+      content.style.display = 'flex';
+      content.style.flexDirection = 'column';
+      content.innerHTML = '<div class="linux-terminal" id="termOut"></div><div class="linux-terminal-input-row"><span class="prompt" id="termPrompt">root@station:/data#</span><input type="text" id="termInp" autocomplete="off" autofocus></div>';
+      
+      var out = content.querySelector('#termOut');
+      var inp = content.querySelector('#termInp');
+      var prompt = content.querySelector('#termPrompt');
+      var currentDir = '/data';
       
       function log(text) {
-        out.innerHTML += '<div class="line">' + text + '</div>';
+        out.innerHTML += '<div>' + text + '</div>';
         out.scrollTop = out.scrollHeight;
       }
       
-      log('XPWeb OS Console v1.0');
+      log('Linux 4.9.113 (armv8l)');
+      log('Добро пожаловать в XPWeb OS Terminal');
       log('Введите "help" для списка команд.');
       
-      function updatePrompt() { prompt.textContent = currentDir.replace(/\//g, '\\') + '>'; }
+      function updatePrompt() { prompt.textContent = 'root@station:' + currentDir + '#'; }
       updatePrompt();
       
-      inp.onkeydown = function(e) {
+      inp.onkeydown = async function(e) {
         if (e.key === 'Enter') {
           var cmd = inp.value.trim();
           inp.value = '';
           if (!cmd) return;
-          log('<span style="color:#fff">' + prompt.textContent + '</span> ' + cmd);
-          
+          log('<span class="prompt-user">root@station</span>:<span class="prompt-path">' + currentDir + '</span># ' + cmd);
           var parts = cmd.split(' ');
           var action = parts[0].toLowerCase();
           var arg = parts.slice(1).join(' ');
-          
-          if (action === 'help') {
-            log('Команды: dir, cd <папка>, mkdir <имя>, touch <имя>, del <имя>, cls, echo <текст>');
-          } else if (action === 'cls') {
+          if (action === 'cd') {
+            if (!arg) { log(currentDir); }
+            else if (arg === '..') { 
+                currentDir = getParentPath(currentDir);
+                updatePrompt(); 
+            } else {
+                var newP = arg.startsWith('/') ? arg : (currentDir === '/' ? '/' + arg : currentDir + '/' + arg);
+                var res = await OS_API.exec(`test -d "${newP}" && echo OK`);
+                if(res.indexOf('OK') > -1) { currentDir = newP; updatePrompt(); }
+                else { log('<span class="error">cd: ' + arg + ': No such file or directory</span>'); }
+            }
+          } else if (action === 'clear' || action === 'cls') {
             out.innerHTML = '';
-          } else if (action === 'echo') {
-            log(arg);
-          } else if (action === 'dir') {
-            var node = FS[currentDir];
-            if (!node) { log('Ошибка'); }
-            else {
-              (node.children || []).forEach(function(c) {
-                var p = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + c;
-                log('  ' + (FS[p].type === 'dir' ? '[DIR]  ' : '[FILE] ') + c);
-              });
-            }
-          } else if (action === 'cd') {
-            if (!arg) { log('Текущая: ' + currentDir); }
-            else if (arg === '..') { currentDir = getParentPath(currentDir); updatePrompt(); }
-            else {
-              var newP = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + arg;
-              if (FS[newP] && FS[newP].type === 'dir') { currentDir = newP; updatePrompt(); }
-              else { log('Папка не найдена'); }
-            }
-          } else if (action === 'mkdir') {
-            if (arg && createFolder(currentDir, arg)) log('Папка создана: ' + arg);
-          } else if (action === 'touch') {
-            if (arg && createFile(currentDir, arg)) log('Файл создан: ' + arg);
-          } else if (action === 'del') {
-            var p = (currentDir === 'C:/' ? 'C:/' : currentDir + '/') + arg;
-            if (FS[p]) { deleteNode(p); log('Удалено: ' + arg); }
-            else { log('Не найдено'); }
+          } else if (action === 'help') {
+            log('Введите любую команду Linux (ls, cat, mkdir, touch, rm, uname -a, free -m, top и т.д.)');
           } else {
-            log('Команда не найдена');
+            var res = await OS_API.exec(`cd "${currentDir}" && ${cmd}`);
+            if (res) log(res);
           }
         }
       };
@@ -958,7 +1085,8 @@ function openSettings() {
             '<div class="item" data-sec="3">3. Сеть</div>' +
             '<div class="item" data-sec="4">4. Безопасность</div>' +
             '<div class="item" data-sec="5">5. Аккаунт</div>' +
-            '<div class="item" data-sec="6">6. Сброс</div>' +
+            '<div class="item" data-sec="6">6. О системе</div>' +
+            '<div class="item" data-sec="7">7. Сброс</div>' +
           '</div>' +
           '<div class="settings-main" id="setContent"></div>' +
         '</div>';
@@ -966,7 +1094,7 @@ function openSettings() {
       var sidebar = content.querySelector('#setSidebar');
       var main = content.querySelector('#setContent');
 
-      function renderSection(sec) {
+      async function renderSection(sec) {
         var html = '';
         if (sec === '1') {
           html = '<h3>Язык</h3><div class="settings-row"><label>Системный язык</label><select id="sLang"><option value="ru" '+(config.lang==='ru'?'selected':'')+'>Русский</option><option value="en" '+(config.lang==='en'?'selected':'')+'>English</option></select></div>';
@@ -979,6 +1107,8 @@ function openSettings() {
         } else if (sec === '5') {
           html = '<h3>Аккаунт</h3><div class="settings-row"><label>Имя</label><input type="text" id="sUserName" value="'+config.userName+'"></div><div class="settings-row"><label>Аватар</label><input type="text" id="sUserAvatar" value="'+config.userAvatar+'"></div>';
         } else if (sec === '6') {
+          html = '<h3>Информация о системе</h3><div id="sysInfoTable">Загрузка...</div>';
+        } else if (sec === '7') {
           html = '<h3>Сброс</h3><div class="settings-row"><button id="sReset" style="padding:10px; background:#d44; color:#fff; border:none; border-radius:4px; cursor:pointer;">Сбросить систему</button></div>';
         }
         main.innerHTML = html;
@@ -995,7 +1125,23 @@ function openSettings() {
           main.querySelector('#sUserName').oninput = function(e) { config.userName = e.target.value; applyConfig(); };
           main.querySelector('#sUserAvatar').oninput = function(e) { config.userAvatar = e.target.value; applyConfig(); };
         }
-        if (sec === '6') main.querySelector('#sReset').onclick = function() {
+        if (sec === '6') {
+          var cpu = await OS_API.exec('cat /proc/cpuinfo | grep "model name" | head -1');
+          var kernel = await OS_API.exec('uname -r');
+          var mem = await OS_API.exec('free -h | grep Mem');
+          var disk = await OS_API.exec('df -h /data | tail -1');
+          var py = await OS_API.exec('python3 --version');
+          var table = '<table class="sysinfo-table">';
+          table += '<tr><td>Процессор</td><td>' + (cpu.split(':')[1] || 'Amlogic A113X') + '</td></tr>';
+          table += '<tr><td>Ядро Linux</td><td>' + kernel + '</td></tr>';
+          table += '<tr><td>Оперативная память</td><td>' + mem + '</td></tr>';
+          table += '<tr><td>Диск (/data)</td><td>' + disk + '</td></tr>';
+          table += '<tr><td>Python</td><td>' + py + '</td></tr>';
+          table += '<tr><td>Версия ОС</td><td>XPWeb OS 1.0</td></tr>';
+          table += '</table>';
+          main.querySelector('#sysInfoTable').innerHTML = table;
+        }
+        if (sec === '7') main.querySelector('#sReset').onclick = function() {
           if (confirm('Вы уверены?')) { localStorage.removeItem(USER_KEY); location.reload(); }
         };
       }
@@ -1018,9 +1164,10 @@ var startBody = document.getElementById('startBody');
 function buildStartMenu() {
   startBody.innerHTML = '<div class="startItem" data-app="explorer" data-path="C:/Desktop"><span class="g">🖥️</span>Рабочий стол</div>' +
     '<div class="startItem" data-app="explorer" data-path="C:/Documents"><span class="g">📁</span>Документы</div>' +
+    '<div class="startItem" data-app="explorer" data-path="/data"><span class="g">🐧</span>Реальный диск</div>' +
     '<div class="startItem" data-app="browser"><span class="g">🌐</span>Браузер</div>' +
     '<div class="startItem" data-app="notepad"><span class="g">📝</span>Блокнот</div>' +
-    '<div class="startItem" data-app="console"><span class="g">💻</span>Командная строка</div>' +
+    '<div class="startItem" data-app="console"><span class="g">💻</span>Терминал</div>' +
     '<div class="startItem" data-app="settings"><span class="g">⚙️</span>Настройки</div>';
   startBody.querySelectorAll('.startItem').forEach(function(el) {
     el.onclick = function() { launchApp(el.dataset.app, el.dataset.path); startMenu.classList.remove('open'); };
