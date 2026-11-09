@@ -492,11 +492,10 @@ function createFile(dir, name) {
   return u.path;
 }
 
+// Импорт с Windows
 function importFromHost(dir, allowDirs) {
-  if (dir.startsWith('/')) {
-    alert('Импорт пока работает только в виртуальную систему.'); return;
-  }
-  if (!FS[dir] || FS[dir].type !== 'dir') { alert('Папка назначения не найдена'); return; }
+  var isReal = dir.startsWith('/');
+  if (!isReal && (!FS[dir] || FS[dir].type !== 'dir')) { alert('Папка назначения не найдена'); return; }
   
   var input = document.createElement('input');
   input.type = 'file';
@@ -520,27 +519,44 @@ function importFromHost(dir, allowDirs) {
       reader.onload = function(ev) {
         var content = ev.target.result;
         var cur = dir;
+        
         for (var i = 0; i < parts.length - 1; i++) {
           var sub = parts[i];
-          var sp = (cur === 'C:/' ? 'C:/' : cur + '/') + sub;
-          if (!FS[sp]) {
-            if (!FS[cur].children) FS[cur].children = [];
-            FS[sp] = { type: 'dir', children: [] };
-            FS[cur].children.push(sub);
+          var sp = (cur === 'C:/' || cur === '/' ? cur : cur + '/') + sub;
+          
+          if (isReal) {
+            OS_API.mkdir(cur, sub); // Асинхронно, но сработает
+          } else {
+            if (!FS[sp]) {
+              if (!FS[cur].children) FS[cur].children = [];
+              FS[sp] = { type: 'dir', children: [] };
+              FS[cur].children.push(sub);
+            }
           }
-          if (FS[sp].type !== 'dir') break;
           cur = sp;
         }
-        var fname = parts[parts.length - 1];
-        var u = uniquePath(cur, fname);
-        FS[u.path] = { type: 'file', content: content };
-        if (!FS[cur].children) FS[cur].children = [];
-        FS[cur].children.push(u.name);
         
-        pending--;
-        if (pending === 0) {
-          document.body.removeChild(input);
-          document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+        var fname = parts[parts.length - 1];
+        if (isReal) {
+           OS_API.write(cur + '/' + fname, content).then(function() {
+              pending--;
+              if (pending === 0) {
+                  document.body.removeChild(input);
+                  renderDesktop();
+                  document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+              }
+           });
+        } else {
+          var u = uniquePath(cur, fname);
+          FS[u.path] = { type: 'file', content: content };
+          if (!FS[cur].children) FS[cur].children = [];
+          FS[cur].children.push(u.name);
+          
+          pending--;
+          if (pending === 0) {
+            document.body.removeChild(input);
+            document.dispatchEvent(new CustomEvent('fs-updated', { detail: { dir: dir } }));
+          }
         }
       };
       reader.onerror = function() {
@@ -841,9 +857,12 @@ function openExplorer(path) {
         }
 
         var actions = document.createElement('div');
-        actions.style.display = 'flex'; actions.style.gap = '5px'; actions.style.marginBottom = '10px';
-        actions.innerHTML = '<button id="newFolderBtn" style="flex:1; padding:5px; cursor:pointer;">+ Папка</button><button id="newFileBtn" style="flex:1; padding:5px; cursor:pointer;">+ Файл</button>';
-        if (!isReal) actions.innerHTML += '<button id="importFileBtn" style="flex:1; padding:5px; cursor:pointer;">📥 Импорт</button>';
+        actions.style.display = 'flex'; actions.style.gap = '5px'; actions.style.marginBottom = '10px'; actions.style.flexWrap = 'wrap';
+        // Кнопки
+        actions.innerHTML = '<button id="newFolderBtn" style="flex:1; padding:5px; cursor:pointer;">+ Папка</button>' +
+                            '<button id="newFileBtn" style="flex:1; padding:5px; cursor:pointer;">+ Файл</button>' +
+                            '<button id="uploadFileBtn" style="flex:1; padding:5px; cursor:pointer;">📥 Файл</button>' +
+                            '<button id="uploadDirBtn" style="flex:1; padding:5px; cursor:pointer;">📂 Папку</button>';
         content.appendChild(actions);
         
         var grid = document.createElement('div');
@@ -925,7 +944,16 @@ function openExplorer(path) {
             }
           }
         };
-        if (!isReal) content.querySelector('#importFileBtn').onclick = function() { importFromHost(current, false); };
+        
+        // Обработчик загрузки ФАЙЛОВ
+        content.querySelector('#uploadFileBtn').onclick = function() {
+            importFromHost(current, false);
+        };
+        
+        // Обработчик загрузки ПАПКИ
+        content.querySelector('#uploadDirBtn').onclick = function() {
+            importFromHost(current, true);
+        };
       }
       render();
       document.addEventListener('fs-updated', function(e) {
