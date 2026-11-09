@@ -6,11 +6,9 @@ import os
 import json
 
 PORT = 8080
+ROOT_DIR = "/"
 
-ROOT_DIR = "/" 
-
-# Защищенные папки (чтобы ты не убил систему)
-PROTECTED = ["/etc", "/bin", "/sbin", "/lib", "/usr", "/boot", "/data"]
+PROTECTED = ["/etc", "/bin", "/sbin", "/lib", "/usr", "/boot", "/proc", "/sys", "/dev"]
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -38,7 +36,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             req_path = query.get('path', [''])[0]
             typ = query.get('type', ['file'])[0]
             full_path = os.path.join(ROOT_DIR, req_path.lstrip('/'))
-            # Защита
             if any(full_path.startswith(p) for p in PROTECTED):
                 self.send_response(403)
                 self.end_headers()
@@ -47,26 +44,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 if typ == 'dir':
                     os.makedirs(full_path, exist_ok=True)
                 else:
-                    open(full_path, 'a').close()
-            except:
-                pass
-            self.send_response(200)
-            self.end_headers()
+                    with open(full_path, 'w') as f:
+                        pass
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b"OK")
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(str(e).encode())
 
         elif path == '/api/delete':
             req_path = query.get('path', [''])[0]
             full_path = os.path.join(ROOT_DIR, req_path.lstrip('/'))
-
             if any(full_path.startswith(p) for p in PROTECTED):
                 self.send_response(403)
                 self.end_headers()
                 return
             try:
                 subprocess.run(['rm', '-rf', full_path])
-            except:
-                pass
-            self.send_response(200)
-            self.end_headers()
+                self.send_response(200)
+                self.end_headers()
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode())
 
         elif path == '/api/read':
             req_path = query.get('path', [''])[0]
@@ -75,7 +79,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 with open(full_path, 'r') as f:
                     content = f.read()
             except:
-                content = "File not found or access denied"
+                content = "File not found"
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
             self.end_headers()
@@ -85,7 +89,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             req_path = query.get('path', [''])[0]
             content = query.get('content', [''])[0]
             full_path = os.path.join(ROOT_DIR, req_path.lstrip('/'))
-            # Защита
             if any(full_path.startswith(p) for p in PROTECTED):
                 self.send_response(403)
                 self.end_headers()
@@ -93,10 +96,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 with open(full_path, 'w') as f:
                     f.write(content)
-            except:
-                pass
-            self.send_response(200)
-            self.end_headers()
+                self.send_response(200)
+                self.end_headers()
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode())
 
         elif path == '/api/exec':
             cmd = query.get('cmd', [''])[0]
@@ -123,7 +128,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
 
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    print(f"error OS Server run port {PORT} (Full Disk Access)")
+# ВОТ ГЛАВНОЕ ИЗМЕНЕНИЕ: ThreadingHTTPServer вместо TCPServer
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+with ThreadingHTTPServer(("", PORT), Handler) as httpd:
+    print(f"XPWeb OS Server running on port {PORT} (Threading)")
     httpd.serve_forever()
